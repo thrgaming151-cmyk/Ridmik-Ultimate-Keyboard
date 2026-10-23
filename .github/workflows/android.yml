@@ -18,16 +18,29 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v2
-
-    - name: Build APK with Gradle
+    - name: Setup Android Project Structure
       run: |
-        gradle init --type basic --script-defaults
-        gradle build || true
+        mkdir -p app/src/main/java/com/example/ridmikkeyboard
+        mkdir -p app/src/main/res/layout
+        mkdir -p app/src/main/res/xml
+        mkdir -p app/src/main/res/drawable
+        
+        [ -f AndroidManifest.xml ] && mv AndroidManifest.xml app/src/main/
+        [ -f RidmikKeyboardService.kt ] && mv RidmikKeyboardService.kt app/src/main/java/com/example/ridmikkeyboard/
+        [ -f res/layout/keyboard_view.xml ] && mv res/layout/keyboard_view.xml app/src/main/res/layout/
+        [ -f res/layout/key_view.xml ] && mv res/layout/key_view.xml app/src/main/res/layout/
+        [ -f res/xml/method.xml ] && mv res/xml/method.xml app/src/main/res/xml/
+        [ -f res/drawable/key_background.xml ] && mv res/drawable/key_background.xml app/src/main/res/drawable/
+
+    - name: Setup Gradle Wrapper
+      run: gradle wrapper
+
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug
 
     - name: Upload APK
       uses: actions/upload-artifact@v3
       with:
         name: Ridmik-Ultimate-Keyboard-APK
         path: app/build/outputs/apk/debug/*.apk
+st
