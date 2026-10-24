@@ -1,0 +1,176 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 33
+          build-tools: 33.0.2
+          ndk: 21.4.7075529
+          sdk-path: ${{ env.ANDROID_SDK_ROOT }}
+
+      - name: Accept Android SDK licenses
+        run: yes | ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --licenses
+
+      - name: Create Android keyboard project structure & files
+        run: |
+          mkdir -p app/src/main/{java/com/example/ridmikkeyboard,res/xml,manifests}
+          
+          # AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml <<EOF
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.ridmikkeyboard">
+
+              <application
+                  android:label="Ridmik Keyboard"
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.RidmikKeyboard">
+                  
+                  <service
+                      android:name=".RidmikKeyboardService"
+                      android:permission="android.permission.BIND_INPUT_METHOD"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.view.InputMethod" />
+                      </intent-filter>
+
+                      <meta-data
+                          android:name="android.view.im"
+                          android:resource="@xml/method" />
+                  </service>
+
+              </application>
+          </manifest>
+          EOF
+
+          # RidmikKeyboardService.kt
+          cat > app/src/main/java/com/example/ridmikkeyboard/RidmikKeyboardService.kt <<EOF
+          package com.example.ridmikkeyboard
+
+          import android.inputmethodservice.InputMethodService
+          import android.view.View
+          import android.view.inputmethod.EditorInfo
+
+          class RidmikKeyboardService : InputMethodService() {
+              override fun onCreateInputView(): View {
+                  // Minimal keyboard view (empty)
+                  return layoutInflater.inflate(android.R.layout.simple_list_item_1, null)
+              }
+
+              override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+                  super.onStartInputView(info, restarting)
+              }
+          }
+          EOF
+
+          # method.xml (Keyboard definition)
+          cat > app/src/main/res/xml/method.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <input-method xmlns:android="http://schemas.android.com/apk/res/android"
+              android:settingsActivity="com.example.ridmikkeyboard.SettingsActivity" />
+          EOF
+
+          # settings.gradle
+          cat > settings.gradle <<EOF
+          rootProject.name = "RidmikKeyboard"
+          include(":app")
+          EOF
+
+          # root build.gradle
+          cat > build.gradle <<EOF
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath "com.android.tools.build:gradle:8.0.2"
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20"
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          # app/build.gradle
+          mkdir -p app
+          cat > app/build.gradle <<EOF
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+
+          android {
+              namespace = "com.example.ridmikkeyboard"
+              compileSdk = 33
+
+              defaultConfig {
+                  applicationId = "com.example.ridmikkeyboard"
+                  minSdk = 21
+                  targetSdk = 33
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+
+          dependencies {
+              implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.20"
+          }
+          EOF
+
+      - name: Build app with Gradle
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ridmik-keyboard-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
